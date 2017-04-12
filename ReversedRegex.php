@@ -269,10 +269,11 @@ class ReversedRegex {
 		elseif (is_a($node, 'Literal')) {
 			if (!$node->escaped and ($node->char == '$' or $node->char == '^'))
 				return 0;
-			if ($node->escaped and
-					($node->char == 'w' or $node->char == 'W'
-					or $node->char == 'd' or $node->char == 'D'
-					or $node->char == 's' or $node->char == 'S')) {
+			if ($node->escaped
+						and ($node->char == 'w' or $node->char == 'W'
+						or $node->char == 'd' or $node->char == 'D'
+						or $node->char == 's' or $node->char == 'S')
+					or !$node->escaped and $node->char == '.') {
 				array_push($this->stack, new Placeholder());
 				return 1;
 			}
