@@ -96,9 +96,7 @@ class RegexParser {
 
 	function factor() {
 		$base = $this->base();
-		$nonrepeat = (is_a($base, 'Literal') and !$base->escaped and ($base->char == '^' or $base->char == '$')
-			or is_a($base, 'LookAround'));
-		if ($this->more() and !$nonrepeat) {
+		if ($this->more()) {
 			$min = 0;
 			$max = 0;
 			$greedy = true;
@@ -263,7 +261,7 @@ class ReversedRegex {
 				$sum += $this->_format($v, $args, $kwargs, $str);
 			return $sum;
 		}
-		elseif (is_a($node, 'Literal')) {
+		elseif ($node instanceof Literal) {
 			if ($node->escaped and strpos('wWdDsS', $node->char) !== false or !$node->escaped and $node->char == '.') {
 				$str .= array_pop($args);
 				return 1;
@@ -272,10 +270,10 @@ class ReversedRegex {
 				$str .= $node->char;
 			return 0;
 		}
-		elseif (is_a($node, 'Choice')) {
+		elseif ($node instanceof Choice) {
 			die ('Unsupported operation');
 		}
-		elseif(is_a($node, 'Group')) {
+		elseif($node instanceof Group) {
 			$test_args = [];
 			$test_str = '';
 			$count = @$this->_format($node->regex, $test_args, $test_args, $test_str);
@@ -286,18 +284,23 @@ class ReversedRegex {
 			$str .= $test_str;
 			return 0;
 		}
-		elseif(is_a($node, 'LookAround')) {
+		elseif($node instanceof LookAround) {
 			if ($node->reversed) {
 				$str .= array_pop($args);
 				return 1;
 			}
 			return $this->_format($node->regex, $args, $kwargs, $str);
 		}
-		elseif(is_a($node, 'CharClass')) {
+		elseif($node instanceof CharClass) {
 			$str .= array_pop($args);
 			return 1;
 		}
-		elseif(is_a($node, 'Repetition')) {
+		elseif($node instanceof Repetition) {
+			if ($node->base instanceof LookAround
+				or $node->base instanceof Literal and !$node->base->escaped
+					and $node->base->char == '^' or $node->base->char == '$')
+				die('The preceding token is not quantifiable');
+
 			if ($node->min != $node->max) { //variable length repetition
 				$str .= array_pop($args);
 				return 1;
