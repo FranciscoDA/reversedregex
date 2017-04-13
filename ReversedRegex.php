@@ -249,99 +249,79 @@ class RegexParser {
 		return $identifier;
 	}
 }
-class Placeholder {
-	public $name = NULL;
-}
+
 class ReversedRegex {
-	public $stack = [];
+	public $tree;
 	function __construct($tree) {
-		$this->make_stack($tree);
+		$this->tree = ($tree);
 	}
 	
-	private function make_stack($node):int {
+	private function _format($node, &$args, &$kwargs, &$str):int {
 		if (is_array($node)) {
 			$sum = 0;
-			foreach ($node as $k => $v) {
-				$sum += $this->make_stack($v);
-			}
+			foreach ($node as $k => $v)
+				$sum += $this->_format($v, $args, $kwargs, $str);
 			return $sum;
 		}
 		elseif (is_a($node, 'Literal')) {
-			if (!$node->escaped and ($node->char == '$' or $node->char == '^'))
-				return 0;
-			if ($node->escaped
-						and ($node->char == 'w' or $node->char == 'W'
-						or $node->char == 'd' or $node->char == 'D'
-						or $node->char == 's' or $node->char == 'S')
-					or !$node->escaped and $node->char == '.') {
-				array_push($this->stack, new Placeholder());
+			if ($node->escaped and strpos('wWdDsS', $node->char) !== false or !$node->escaped and $node->char == '.') {
+				$str .= array_pop($args);
 				return 1;
 			}
-			array_push($this->stack, $node->char);
-			return 1;
+			if ($node->escaped or $node->char != '$' and $node->char != '^')
+				$str .= $node->char;
+			return 0;
 		}
 		elseif (is_a($node, 'Choice')) {
 			die ('Unsupported operation');
 		}
 		elseif(is_a($node, 'Group')) {
-			$pushed = $this->make_stack($node->regex);
-			$placeholders = 0;
-			for ($i = $pushed; $i > 0; $i--) {
-				$v = $this->stack[count($this->stack)-$i];
-				if (is_a($v, 'Placeholder'))
-					$placeholders++;
-			}
-			if ($placeholders) {
-				$p = new Placeholder();
-				$p->name = $node->name;
-				array_splice($this->stack, count($this->stack)-$pushed, count($this->stack), [$p]);
+			$test_args = [];
+			$test_str = '';
+			$count = @$this->_format($node->regex, $test_args, $test_args, $test_str);
+			if ($count > 0) {
+				$str .= $kwargs[$node->name] ?? array_pop($args);
 				return 1;
 			}
-			return $pushed;
+			$str .= $test_str;
+			return 0;
 		}
 		elseif(is_a($node, 'LookAround')) {
-			if($node->reversed) {
-				array_push($this->stack, new Placeholder());
+			if ($node->reversed) {
+				$str .= array_pop($args);
 				return 1;
 			}
-			return $this->make_stack($node->regex);
+			return $this->_format($node->regex, $args, $kwargs, $str);
 		}
 		elseif(is_a($node, 'CharClass')) {
-			array_push($this->stack, new Placeholder());
+			$str .= array_pop($args);
+			return 1;
 		}
 		elseif(is_a($node, 'Repetition')) {
-			$pushed = $this->make_stack($node->base);
-			$placeholders = 0;
-			for ($i = $pushed; $i > 0; $i--) {
-				if (is_a($this->stack[count($this->stack)-$i], 'Placeholder'))
-					$placeholders++;
-			}
-			if ($placeholders or $node->min != $node->max) {
-				$len = count($this->stack);
-				array_splice($this->stack, $len-$pushed, $len, [new Placeholder()]);
+			if ($node->min != $node->max) { //variable length repetition
+				$str .= array_pop($args);
 				return 1;
 			}
-			if ($node->min == $node->max) {
-				$slice = array_slice($this->stack, count($this->stack)-$pushed);
-				for ($i = 0; $i < $node->min-1; $i++)
-					$this->stack = array_merge($this->stack, $slice);
+			$test_args = [];
+			$test_str = '';
+			$count = @$this->_format($node->regex, $test_args, $test_args, $test_str);
+			if ($count == 0) { // fixed-length repetition and literal base
+				$str .= str_repeat($test_str, $this->min);
+				return 0;
 			}
+			$str .= array_pop($args);
+			return 1;
 		}
 		return 0;
 	}
 	
 	function format($args) {
 		$str = '';
-		$reference_number = 0;
-		foreach ($this->stack as $k => $v) {
-			if (is_a($v, 'Placeholder')) {
-				$str .= $args[$v->name] ?? $args[$reference_number];
-				$reference_number++;
-			}
-			else
-				$str .= $v;
-		}
+		$pos_args = array_reverse(array_filter($args, 'is_int', ARRAY_FILTER_USE_KEY));
+		$kw_args = array_diff_key($args, $pos_args);
+		$this->_format($this->tree, $pos_args, $kw_args, $str);
 		return $str;
 	}
 }
+
 
